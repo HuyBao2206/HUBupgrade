@@ -34,9 +34,12 @@ const symbols = {
 function icon(name) {
  return '<svg class="glyph" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'+symbols[name]+'</svg>';
 }
+function nextLesson() {
+ return ordered.find(n => state(n.id) === 'part') || ordered.find(n => state(n.id) === 'new');
+}
 function home() {
  const completed = count(ordered);
- const next = ordered.find(n => state(n.id)==='part') || ordered.find(n => state(n.id)==='new');
+ const next = nextLesson();
  const fields = ['LOG','PUR','HR','FNB','CORE'].map(d => {
   const items = ordered.filter(n => courseDomain(n,d));
   const learned = count(items);
@@ -54,7 +57,7 @@ function home() {
     <div class="stat"><small>Bài đã hoàn thành</small><strong>${completed} <small>/ ${ordered.length}</small></strong></div>
     <a class="stat" href="#jobs"><small>Vị trí nghề nghiệp</small><strong>${db.roles.length} <small>↗</small></strong></a></div>
   <div class="title"><h2>Lĩnh vực học tập</h2><a href="#road">Toàn bộ lộ trình →</a></div><div class="domains">${fields}</div>
-  ${next?`<div class="title"><h2>Bài học tiếp theo</h2></div><a class="panel next" href="${route(next.id)}"><span class="code">${next.id}</span><strong>${esc(next.title_vi)} ↗</strong></a>`:''}
+  ${next?`<div class="title"><h2>Bài học tiếp theo</h2></div><div class="panel"><a class="next" href="${route(next.id)}"><span class="code">${next.id}</span><strong>${esc(next.title_vi)} ↗</strong></a><button type="button" class="plain" data-copy="${next.id}">Sao chép lệnh học · ${next.id}</button></div>`:''}
   <div class="title"><h2>Mục tiêu học tập</h2></div><div class="panel">${list(db.project.objectives)}<a class="jump" href="#jobs">Xem tiến độ theo vị trí →</a></div>`;
 }
 function term(t){return '<div class="term"><b>'+esc(t.term_en)+'</b>'+esc(t.term_vi)+(t.abbreviation||t.full_form?'<small> · '+esc([t.abbreviation,t.full_form].filter(Boolean).join(' · '))+'</small>':'')+'<p>'+esc(t.meaning_vi)+'</p></div>'}
@@ -63,7 +66,7 @@ function check(id){return '<input type="checkbox" data-check="'+id+'" aria-label
 function tree(id){const n=nodes[id];return '<div class="child">'+check(id)+' <b>'+esc(n.title_vi)+'</b>'+fold(id+' · '+depth[n.required_depth],'<p>'+esc(n.description)+'</p>'+(children[id]||[]).map(tree).join(''))+'</div>'}
 function lessonBody(n){
  const terms=db.glossary.filter(t=>n.term_ids.includes(t.id)||t.related_knowledge_ids.includes(n.id));
- return '<div class="lesson-progress"><label>'+check(n.id)+' Hoàn thành bài học</label><span data-count="'+n.id+'"></span><div class="bar"><i data-fill="'+n.id+'"></i></div></div><p class="muted">'+esc(n.title_en)+'</p><p>'+esc(n.description)+'</p><p><b>Nhóm năng lực</b> · '+esc(nodes[n.parent_id].title_vi)+'</p><p><b>Ứng dụng</b> · '+n.applicable_domains.map(d=>names[d]).join(', ')+'</p><p><b>Học trước</b><br>'+refs(n.prerequisites)+'</p>'+ (n.recommended_prerequisites.length?fold('Nên học trước',refs(n.recommended_prerequisites)):'')+'<h3>Chuẩn đầu ra</h3>'+list(n.learning_outcomes)+'<h3>Checklist nội dung</h3>'+(children[n.id]||[]).map(tree).join('')+fold('Thực hành · '+n.practice_mode.join(', '),list(n.practical_applications)+'<p>'+esc(n.tools.join(' · '))+'</p>')+fold('Thuật ngữ liên quan ('+terms.length+')',terms.map(term).join(''))+fold([...new Set(n.ai_notes.map(x=>ai[x.label]).concat(n.human_decisions.length?['Con người làm chủ']:[]))].join(' · '),n.ai_notes.map(a=>'<h3>'+esc(ai[a.label])+'</h3><b>'+esc(a.task)+'</b>'+list([a.technology,a.current_capability,a.near_term_outlook,'Trách nhiệm: '+a.human_responsibility,'Rủi ro: '+a.risks])).join('')+list(n.human_decisions))+'<button class="plain" data-copy="'+n.id+'">⧉ Sao chép lệnh học</button>'
+ return '<div class="lesson-progress"><label>'+check(n.id)+' Hoàn thành bài học</label><span data-count="'+n.id+'"></span><div class="bar"><i data-fill="'+n.id+'"></i></div></div><p class="muted">'+esc(n.title_en)+'</p><p>'+esc(n.description)+'</p><p><b>Nhóm năng lực</b> · '+esc(nodes[n.parent_id].title_vi)+'</p><p><b>Ứng dụng</b> · '+n.applicable_domains.map(d=>names[d]).join(', ')+'</p><p><b>Học trước</b><br>'+refs(n.prerequisites)+'</p>'+ (n.recommended_prerequisites.length?fold('Nên học trước',refs(n.recommended_prerequisites)):'')+'<h3>Chuẩn đầu ra</h3>'+list(n.learning_outcomes)+'<h3>Checklist nội dung</h3>'+(children[n.id]||[]).map(tree).join('')+fold('Thực hành · '+n.practice_mode.join(', '),list(n.practical_applications)+'<p>'+esc(n.tools.join(' · '))+'</p>')+fold('Thuật ngữ liên quan ('+terms.length+')',terms.map(term).join(''))+fold([...new Set(n.ai_notes.map(x=>ai[x.label]).concat(n.human_decisions.length?['Con người làm chủ']:[]))].join(' · '),n.ai_notes.map(a=>'<h3>'+esc(ai[a.label])+'</h3><b>'+esc(a.task)+'</b>'+list([a.technology,a.current_capability,a.near_term_outlook,'Trách nhiệm: '+a.human_responsibility,'Rủi ro: '+a.risks])).join('')+list(n.human_decisions))+'<button class="plain" data-copy>⧉ Sao chép lệnh học</button>'
 }
 function row(n){return '<details class="lesson" data-id="'+n.id+'" style="'+palette(n.domain_id)+'"><summary><span class="seq">'+num(n.sequence_number)+'</span><span><span class="code">'+n.id+' · '+names[n.domain_id]+'</span><strong>'+esc(n.title_vi)+'</strong><small>'+depth[n.required_depth]+' · <span data-state="'+n.id+'" data-value="'+state(n.id)+'">'+statusName[state(n.id)]+'</span></small></span></summary><div class="content"></div></details>'}
 function jobs(){
@@ -89,6 +92,19 @@ function sync() {
   const value = state(el.dataset.state);
   el.textContent = statusName[value];
   el.dataset.value = value;
+ });
+ const next = nextLesson();
+ view.querySelectorAll('.lesson [data-copy]').forEach(button => {
+  const id = button.closest('.lesson').dataset.id;
+  const completed = state(id) === 'done';
+  const target = completed ? next : nodes[id];
+  button.disabled = !target;
+  button.dataset.copy = target?.id || '';
+  if (!target) button.textContent = 'Đã hoàn thành lộ trình';
+  else {
+   const label = completed ? 'Sao chép lệnh bài tiếp theo' : 'Sao chép lệnh học';
+   button.textContent = label+' · '+target.id;
+  }
  });
  view.querySelectorAll('[data-count]').forEach(el => {
   const ids = leaves(el.dataset.count);
@@ -171,7 +187,19 @@ view.addEventListener('change',async event=>{
   }
  } catch {sync();notify('Trình duyệt chưa lưu được tiến độ.')}
 });
-view.addEventListener('click',async e=>{const n=nodes[e.target.dataset.copy];if(n){const prompt='Bắt đầu bài học '+n.id+' – '+n.title_vi+'.';try{await navigator.clipboard.writeText(prompt);notify('Đã sao chép lệnh học')}catch{window.prompt('Sao chép lệnh học',prompt)}}});
+view.addEventListener('click', async event => {
+ const button = event.target.closest('button[data-copy]');
+ if (!button || button.disabled) return;
+ const target = nodes[button.dataset.copy];
+ if (!target) return;
+ const prompt = 'Bắt đầu bài học '+target.id+' – '+target.title_vi+'.';
+ try {
+  await navigator.clipboard.writeText(prompt);
+  notify('Đã sao chép lệnh học · '+target.id);
+ } catch {
+  window.prompt('Sao chép lệnh học · '+target.id, prompt);
+ }
+});
 async function init(){
  const embedded = document.getElementById('roadmap-data');
  if (embedded) {
