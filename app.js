@@ -186,8 +186,7 @@ async function init(){
  try {
   storageService.init({
    summarize:items=>ordered.filter(n=>leaves(n.id).every(id=>items.has(id))).map(n=>n.id),
-   onRefresh:name=>{if(name===storageService.current()) refreshProfile()},
-   onProblem:name=>{if(name===storageService.current()) notify('Đã lưu trên máy · Chờ đồng bộ')}
+   onRefresh:name=>{if(name===storageService.current()) refreshProfile()}
   });
   refreshProfile();
  } catch {progressUI.display(null);notify('Trình duyệt không đọc được bộ nhớ tiến trình.')}

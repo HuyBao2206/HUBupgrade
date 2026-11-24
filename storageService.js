@@ -8,8 +8,9 @@ const storageService = (() => {
   const read = name => JSON.parse(localStorage.getItem(prefix + name));
   const write = (name, value) => localStorage.setItem(prefix + name, JSON.stringify(value));
   const inFlight = new Map();
+  const problems = new Map();
   const saveTimers = new Map();
-  let summarize, onRefresh, onProblem;
+  let summarize, onRefresh;
   const locked = (name, fn) => navigator.locks?.request
     ? navigator.locks.request(prefix + name, fn) : Promise.resolve().then(fn);
   const conflictText = 'Danh xưng đã tồn tại. Hãy chọn danh xưng khác.';
@@ -41,11 +42,13 @@ const storageService = (() => {
         signal:controller.signal,
         ...(body && {headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
       });
-      if (response.status === 404) return {missing:true};
-      if (response.status === 409) return {stale:true};
-      if (!response.ok) throw Error('Sync unavailable');
-      const value = await response.json();
-      if (value.profile?.username !== name || !Array.isArray(value.profile.completedItems) || !value.sha) throw Error('Invalid sync response');
+      const value = await response.json().catch(() => null);
+      if (response.status === 404 && !body && value?.error === 'missing') return {missing:true};
+      if (response.status === 409 && body && value?.error === 'conflict') return {stale:true};
+      if (value?.error === 'configuration') throw Error('Worker báo thiếu cấu hình. Kiểm tra Secret GITHUB_TOKEN.');
+      if (value?.error === 'storage_unavailable') throw Error(body ? 'Worker chưa ghi được vào GitHub.' : 'Worker chưa đọc được từ GitHub.');
+      if (!response.ok) throw Error('Worker trả về HTTP '+response.status+'.');
+      if (value?.profile?.username !== name || !Array.isArray(value.profile.completedItems) || !value.sha) throw Error('Phản hồi không đúng định dạng Worker của HUB.');
       return value;
     } finally { clearTimeout(timeout); }
   }
@@ -62,7 +65,7 @@ const storageService = (() => {
         onRefresh(name);
         return;
       }
-      if (remote.missing && snapshot.base !== null) throw Error('Remote profile missing');
+      if (remote.missing && snapshot.base !== null) throw Error('Không tìm thấy bản đã đồng bộ trên GitHub.');
       const merged = rebase(snapshot.base || [], snapshot.profile.completedItems, remote.profile?.completedItems || []);
       const items = applyPending(merged, snapshot.pending);
       const candidate = withItems(snapshot.profile, items);
@@ -90,15 +93,36 @@ const storageService = (() => {
       onRefresh(name);
       if (!more) return;
     }
-    throw Error('Sync pending');
+    throw Error('Đang có thay đổi đồng thời. Hãy thử lại.');
   }
   function synchronize(name) {
     if (!endpoint || !name || !navigator.onLine) return Promise.resolve();
     if (!inFlight.has(name)) {
-      const task = reconcile(name).catch(() => onProblem(name)).finally(() => inFlight.delete(name));
+      const task = reconcile(name)
+        .then(() => problems.delete(name))
+        .catch(error => problems.set(name, describeError(error)))
+        .finally(() => {
+          inFlight.delete(name);
+          onRefresh(name);
+        });
       inFlight.set(name,task);
     }
     return inFlight.get(name);
+  }
+  function describeError(error) {
+    if (error.name === 'AbortError') return 'Worker phản hồi quá chậm.';
+    if (error instanceof TypeError) return 'Trình duyệt chưa kết nối được với Worker.';
+    return error.message;
+  }
+  function syncStatus(name) {
+    const record = read(name);
+    if (!endpoint) return 'Chỉ lưu trên trình duyệt này';
+    if (record?.conflict) return 'Trùng danh xưng khi đồng bộ';
+    if (problems.has(name)) return problems.get(name);
+    if (!navigator.onLine) return 'Ngoại tuyến · Đã lưu trên máy';
+    if (inFlight.has(name)) return 'Đang đồng bộ…';
+    if (!record || record.base === null || Object.keys(record.pending || {}).length) return 'Đã lưu trên máy · Chờ đồng bộ';
+    return 'Đã đồng bộ';
   }
   function pendingNames() {
     const names=[];
@@ -142,7 +166,7 @@ const storageService = (() => {
     if (!read(name) && endpoint) {
       let remote;
       try { remote = await request(name); }
-      catch { throw Error('Chưa có bản lưu trên máy. Hãy thử lại khi có kết nối.'); }
+      catch (error) { throw Error(describeError(error)); }
       if (!remote.missing) await locked(name, () => {
         if (!read(name)) write(name,{profile:remote.profile,base:remote.profile.completedItems});
       });
@@ -180,7 +204,7 @@ const storageService = (() => {
     return Array.isArray(items) ? items.filter(id=>typeof id==='string') : [];
   }
   function init(options) {
-    ({summarize,onRefresh,onProblem}=options);
+    ({summarize,onRefresh}=options);
     window.addEventListener('online',retry);
     window.addEventListener('focus',retry);
     window.addEventListener('storage',event => {
@@ -188,6 +212,6 @@ const storageService = (() => {
     });
     retry();
   }
-  return {validName, current, read, init, create, enter, update, legacyItems,
+  return {validName, current, read, init, create, enter, update, legacyItems, syncStatus, synchronize, canSync:!!endpoint,
     leave() { localStorage.removeItem(sessionKey); }};
 })();

@@ -86,7 +86,9 @@ const progressUI = (() => {
   function display(profile) {
     selectedProfile=profile;
     const active=document.querySelector('#active-name'), leave=document.querySelector('#leave-profile');
-    active.hidden=leave.hidden=!profile;
+    active.parentElement.hidden=leave.hidden=!profile;
+    document.querySelector('#sync-status').textContent=profile ? storageService.syncStatus(profile.username) : '';
+    document.querySelector('#retry-sync').hidden=!profile || !storageService.canSync || !!storageService.read(profile.username)?.conflict;
     active.textContent=profile?.username||'';
     active.title=active.textContent;
     const collision=profile && storageService.read(profile.username)?.conflict;
@@ -145,6 +147,13 @@ const progressUI = (() => {
     }
     openers.onclick=e=>{
       const button=e.target.closest('button');
+      if(button?.id==='retry-sync' && selectedProfile) {
+        const name=selectedProfile.username;
+        const saving=storageService.synchronize(name);
+        display(selectedProfile);
+        button.disabled=true;
+        saving.finally(()=>{button.disabled=false});
+      }
       if(button?.dataset.dialog) open(button.dataset.dialog,button);
       if(button?.id==='leave-profile') {
         storageService.leave(); onChange(null); notify('Đã thoát tiến trình');

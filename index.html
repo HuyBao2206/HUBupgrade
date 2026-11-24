@@ -24,7 +24,11 @@
     <header>
       <nav class="breadcrumbs" aria-label="Đường dẫn trang"><ol id="crumb"></ol></nav>
       <div class="profile-actions" id="profile-actions">
-        <strong id="active-name" hidden></strong>
+        <div class="profile-summary" hidden>
+          <strong id="active-name"></strong>
+          <small id="sync-status" role="status"></small>
+        </div>
+        <button type="button" class="profile-button" id="retry-sync" hidden>Đồng bộ ngay</button>
         <button type="button" class="profile-button gold" data-dialog="create">Khai mở tiến trình</button>
         <button type="button" class="profile-button" data-dialog="enter">Vào tiến trình của bạn</button>
         <button type="button" class="profile-button" id="leave-profile" hidden>Thoát</button>

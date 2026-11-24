@@ -160,6 +160,8 @@ input[type=checkbox] {width:17px;height:17px;vertical-align:middle;accent-color:
 /* Personal progress */
 [hidden] {display:none!important}
 .profile-actions {display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-left:auto;margin-right:16px}
+.profile-summary {display:grid;line-height:1.35;max-width:35ch}
+#sync-status {color:var(--muted);font-size:13px}
 #active-name {color:var(--ink);max-width:17ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .profile-button,#progress-dialog [data-close] {
   position:relative;isolation:isolate;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;gap:8px;
@@ -266,7 +268,11 @@ input.check-burst:not(:focus-visible) {outline:none}
     <header>
       <nav class="breadcrumbs" aria-label="Đường dẫn trang"><ol id="crumb"></ol></nav>
       <div class="profile-actions" id="profile-actions">
-        <strong id="active-name" hidden></strong>
+        <div class="profile-summary" hidden>
+          <strong id="active-name"></strong>
+          <small id="sync-status" role="status"></small>
+        </div>
+        <button type="button" class="profile-button" id="retry-sync" hidden>Đồng bộ ngay</button>
         <button type="button" class="profile-button gold" data-dialog="create">Khai mở tiến trình</button>
         <button type="button" class="profile-button" data-dialog="enter">Vào tiến trình của bạn</button>
         <button type="button" class="profile-button" id="leave-profile" hidden>Thoát</button>
@@ -313,8 +319,9 @@ const storageService = (() => {
   const read = name => JSON.parse(localStorage.getItem(prefix + name));
   const write = (name, value) => localStorage.setItem(prefix + name, JSON.stringify(value));
   const inFlight = new Map();
+  const problems = new Map();
   const saveTimers = new Map();
-  let summarize, onRefresh, onProblem;
+  let summarize, onRefresh;
   const locked = (name, fn) => navigator.locks?.request
     ? navigator.locks.request(prefix + name, fn) : Promise.resolve().then(fn);
   const conflictText = 'Danh xưng đã tồn tại. Hãy chọn danh xưng khác.';
@@ -346,11 +353,13 @@ const storageService = (() => {
         signal:controller.signal,
         ...(body && {headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
       });
-      if (response.status === 404) return {missing:true};
-      if (response.status === 409) return {stale:true};
-      if (!response.ok) throw Error('Sync unavailable');
-      const value = await response.json();
-      if (value.profile?.username !== name || !Array.isArray(value.profile.completedItems) || !value.sha) throw Error('Invalid sync response');
+      const value = await response.json().catch(() => null);
+      if (response.status === 404 && !body && value?.error === 'missing') return {missing:true};
+      if (response.status === 409 && body && value?.error === 'conflict') return {stale:true};
+      if (value?.error === 'configuration') throw Error('Worker báo thiếu cấu hình. Kiểm tra Secret GITHUB_TOKEN.');
+      if (value?.error === 'storage_unavailable') throw Error(body ? 'Worker chưa ghi được vào GitHub.' : 'Worker chưa đọc được từ GitHub.');
+      if (!response.ok) throw Error('Worker trả về HTTP '+response.status+'.');
+      if (value?.profile?.username !== name || !Array.isArray(value.profile.completedItems) || !value.sha) throw Error('Phản hồi không đúng định dạng Worker của HUB.');
       return value;
     } finally { clearTimeout(timeout); }
   }
@@ -367,7 +376,7 @@ const storageService = (() => {
         onRefresh(name);
         return;
       }
-      if (remote.missing && snapshot.base !== null) throw Error('Remote profile missing');
+      if (remote.missing && snapshot.base !== null) throw Error('Không tìm thấy bản đã đồng bộ trên GitHub.');
       const merged = rebase(snapshot.base || [], snapshot.profile.completedItems, remote.profile?.completedItems || []);
       const items = applyPending(merged, snapshot.pending);
       const candidate = withItems(snapshot.profile, items);
@@ -395,15 +404,36 @@ const storageService = (() => {
       onRefresh(name);
       if (!more) return;
     }
-    throw Error('Sync pending');
+    throw Error('Đang có thay đổi đồng thời. Hãy thử lại.');
   }
   function synchronize(name) {
     if (!endpoint || !name || !navigator.onLine) return Promise.resolve();
     if (!inFlight.has(name)) {
-      const task = reconcile(name).catch(() => onProblem(name)).finally(() => inFlight.delete(name));
+      const task = reconcile(name)
+        .then(() => problems.delete(name))
+        .catch(error => problems.set(name, describeError(error)))
+        .finally(() => {
+          inFlight.delete(name);
+          onRefresh(name);
+        });
       inFlight.set(name,task);
     }
     return inFlight.get(name);
+  }
+  function describeError(error) {
+    if (error.name === 'AbortError') return 'Worker phản hồi quá chậm.';
+    if (error instanceof TypeError) return 'Trình duyệt chưa kết nối được với Worker.';
+    return error.message;
+  }
+  function syncStatus(name) {
+    const record = read(name);
+    if (!endpoint) return 'Chỉ lưu trên trình duyệt này';
+    if (record?.conflict) return 'Trùng danh xưng khi đồng bộ';
+    if (problems.has(name)) return problems.get(name);
+    if (!navigator.onLine) return 'Ngoại tuyến · Đã lưu trên máy';
+    if (inFlight.has(name)) return 'Đang đồng bộ…';
+    if (!record || record.base === null || Object.keys(record.pending || {}).length) return 'Đã lưu trên máy · Chờ đồng bộ';
+    return 'Đã đồng bộ';
   }
   function pendingNames() {
     const names=[];
@@ -447,7 +477,7 @@ const storageService = (() => {
     if (!read(name) && endpoint) {
       let remote;
       try { remote = await request(name); }
-      catch { throw Error('Chưa có bản lưu trên máy. Hãy thử lại khi có kết nối.'); }
+      catch (error) { throw Error(describeError(error)); }
       if (!remote.missing) await locked(name, () => {
         if (!read(name)) write(name,{profile:remote.profile,base:remote.profile.completedItems});
       });
@@ -485,7 +515,7 @@ const storageService = (() => {
     return Array.isArray(items) ? items.filter(id=>typeof id==='string') : [];
   }
   function init(options) {
-    ({summarize,onRefresh,onProblem}=options);
+    ({summarize,onRefresh}=options);
     window.addEventListener('online',retry);
     window.addEventListener('focus',retry);
     window.addEventListener('storage',event => {
@@ -493,7 +523,7 @@ const storageService = (() => {
     });
     retry();
   }
-  return {validName, current, read, init, create, enter, update, legacyItems,
+  return {validName, current, read, init, create, enter, update, legacyItems, syncStatus, synchronize, canSync:!!endpoint,
     leave() { localStorage.removeItem(sessionKey); }};
 })();
 
@@ -585,7 +615,9 @@ const progressUI = (() => {
   function display(profile) {
     selectedProfile=profile;
     const active=document.querySelector('#active-name'), leave=document.querySelector('#leave-profile');
-    active.hidden=leave.hidden=!profile;
+    active.parentElement.hidden=leave.hidden=!profile;
+    document.querySelector('#sync-status').textContent=profile ? storageService.syncStatus(profile.username) : '';
+    document.querySelector('#retry-sync').hidden=!profile || !storageService.canSync || !!storageService.read(profile.username)?.conflict;
     active.textContent=profile?.username||'';
     active.title=active.textContent;
     const collision=profile && storageService.read(profile.username)?.conflict;
@@ -644,6 +676,13 @@ const progressUI = (() => {
     }
     openers.onclick=e=>{
       const button=e.target.closest('button');
+      if(button?.id==='retry-sync' && selectedProfile) {
+        const name=selectedProfile.username;
+        const saving=storageService.synchronize(name);
+        display(selectedProfile);
+        button.disabled=true;
+        saving.finally(()=>{button.disabled=false});
+      }
       if(button?.dataset.dialog) open(button.dataset.dialog,button);
       if(button?.id==='leave-profile') {
         storageService.leave(); onChange(null); notify('Đã thoát tiến trình');
@@ -849,8 +888,7 @@ async function init(){
  try {
   storageService.init({
    summarize:items=>ordered.filter(n=>leaves(n.id).every(id=>items.has(id))).map(n=>n.id),
-   onRefresh:name=>{if(name===storageService.current()) refreshProfile()},
-   onProblem:name=>{if(name===storageService.current()) notify('Đã lưu trên máy · Chờ đồng bộ')}
+   onRefresh:name=>{if(name===storageService.current()) refreshProfile()}
   });
   refreshProfile();
  } catch {progressUI.display(null);notify('Trình duyệt không đọc được bộ nhớ tiến trình.')}
