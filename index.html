@@ -4,30 +4,62 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#131c31">
-  <title>HUB Chăm Học</title>
+  <meta name="progress-endpoint" content="">
+  <title>HUB Ham Học</title>
   <link rel="icon" href="assets/hub.svg">
   <link rel="stylesheet" href="style.css">
+  <script src="storageService.js" defer></script>
+  <script src="progressUI.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
   <aside>
-    <a class="brand" href="#home" aria-label="HUB Chăm Học">
+    <a class="brand" href="#home" aria-label="HUB Ham Học">
       <img src="assets/hub.svg" width="40" height="40" alt="HUB">
-      <strong>Chăm Học</strong>
+      <strong>Ham Học</strong>
     </a>
     <nav aria-label="Điều hướng chính"></nav>
   </aside>
   <main>
     <header>
       <span>Không gian học tập <i>/</i> <b id="crumb">Tổng quan</b></span>
+      <div class="profile-actions" id="profile-actions">
+        <strong id="active-name" hidden></strong>
+        <button type="button" class="profile-button gold" data-dialog="create">Khai mở tiến trình</button>
+        <button type="button" class="profile-button" data-dialog="enter">Vào tiến trình của bạn</button>
+        <button type="button" class="profile-button" id="leave-profile" hidden>Thoát</button>
+      </div>
       <img class="avatar" src="assets/hub.webp" width="34" height="34" alt="HUB">
     </header>
     <section id="view" aria-label="Nội dung học tập">Đang tải lộ trình…</section>
     <footer>
-      <span>HUB Chăm Học</span>
+      <span>HUB Ham Học</span>
       <a href="https://huybao2206.github.io/hubcuteee/" target="_blank" rel="noopener noreferrer">Bio của HUB <span aria-hidden="true">↗</span></a>
     </footer>
   </main>
+  <dialog id="progress-dialog" aria-labelledby="progress-title">
+    <div class="dialog-top"><h2 id="progress-title">Tiến trình cá nhân</h2><button type="button" data-close aria-label="Đóng">×</button></div>
+    <div class="dialog-columns">
+      <form id="create-profile" novalidate>
+        <h3>Khai mở tiến trình</h3>
+        <label for="create-name">Danh xưng (tên truy cập)</label>
+        <input id="create-name" name="username" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="name-rule name-reminder create-error">
+        <small id="name-rule">Chỉ dùng chữ cái không dấu và số.</small>
+        <small id="name-reminder">Hãy lưu lại danh xưng để vào đúng tiến trình lần sau. Hệ thống không dùng mật khẩu.</small>
+        <fieldset id="relations"><legend>Đạo hữu là gì của HUB:</legend><div class="relation-grid"></div></fieldset>
+        <label id="legacy-choice" hidden><input type="checkbox"> Nhập tiến độ cũ trên máy</label>
+        <p class="form-error" id="create-error" role="status"></p>
+        <button class="profile-button gold" type="submit" aria-disabled="true">Tạo tiến trình</button>
+      </form>
+      <form id="enter-profile" novalidate>
+        <h3>Tái nhập tiến trình</h3>
+        <label for="enter-name">Danh xưng đã tạo</label>
+        <input id="enter-name" name="username" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="enter-error">
+        <p class="form-error" id="enter-error" role="status"></p>
+        <button class="profile-button" type="submit">Vào tiến trình</button>
+      </form>
+    </div>
+  </dialog>
   <div id="notice" role="status"></div>
 </body>
 </html>

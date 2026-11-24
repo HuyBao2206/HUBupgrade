@@ -8,7 +8,7 @@ const ai={AI_ASSIST:'AI hỗ trợ',AI_TRANSITION:'Có thể tự động hóa',
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const list=a=>'<ul>'+a.map(v=>'<li>'+esc(v)+'</li>').join('')+'</ul>';
 const fold=(s,html)=>'<details><summary>'+esc(s)+'</summary>'+html+'</details>';
-const num=i=>String(i).padStart(2,'0'), key='hub.atlas.leaves.v1';
+const num=i=>String(i).padStart(2,'0');
 let db,nodes,ordered,children={},done=new Set(),page,domain,lesson,q='',filter='',noticeTimer;
 function notify(msg){document.querySelector('#notice').textContent=msg;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>document.querySelector('#notice').textContent='',3000)}
 function leaves(id){return children[id]?.flatMap(leaves)??[id]}
@@ -94,7 +94,7 @@ function sync() {
   const ids = leaves(el.dataset.count);
   const completed = ids.filter(id => done.has(id)).length;
   el.textContent = completed+' / '+ids.length+' nội dung';
-  el.parentElement.querySelector('[data-fill]').style.width = (100*completed/ids.length)+'%';
+  el.parentElement.querySelector('[data-fill]').style.transform = 'scaleX('+completed/ids.length+')';
  });
 }
 function render(){
@@ -115,7 +115,48 @@ function render(){
  if(lesson&&page==='road'){const el=[...view.querySelectorAll('.lesson')].find(x=>x.dataset.id===lesson);if(el){el.open=true;hydrate(el);el.scrollIntoView({behavior:'instant'})}}
 }
 view.addEventListener('toggle',e=>{if(e.target.matches('.lesson[open]'))hydrate(e.target)},true);
-view.addEventListener('change',e=>{const id=e.target.dataset.check;if(!id)return;leaves(id).forEach(k=>e.target.checked?done.add(k):done.delete(k));try{localStorage.setItem(key,JSON.stringify([...done]))}catch{notify('Trình duyệt chưa lưu được tiến độ.')}sync();if(filter)results()});
+let activeProfile = null;
+function applyProfile(profile) {
+ const changed = activeProfile?.username !== profile?.username ||
+   JSON.stringify(activeProfile?.completedItems) !== JSON.stringify(profile?.completedItems);
+ activeProfile = profile;
+ done = new Set(profile?.completedItems || []);
+ progressUI.display(profile);
+ if (!changed) return;
+ if (page === 'road') {
+  sync();
+  if (filter) results();
+ } else if (page === 'home' || page === 'jobs') render();
+}
+function refreshProfile() {
+ const name = storageService.current();
+ applyProfile(name ? storageService.read(name)?.profile : null);
+}
+view.addEventListener('click',event=>{
+ const box=event.target.closest('[data-check]');
+ if(!box || activeProfile) return;
+ event.preventDefault();
+ box.classList.remove('check-locked');
+ void box.offsetWidth;
+ box.classList.add('check-locked');
+ if (matchMedia('(prefers-reduced-motion: reduce)').matches) progressUI.open('create',box);
+ else setTimeout(()=>{if(!activeProfile && box.isConnected) progressUI.open('create',box)},90);
+});
+view.addEventListener('change',async event=>{
+ const box=event.target, id=box.dataset.check;
+ if(!id) return;
+ if(!activeProfile) {sync();progressUI.open('create',box);return;}
+ const name=activeProfile.username, checked=box.checked;
+ try {
+  const profile=await storageService.update(name,leaves(id),checked);
+  if(storageService.current()===name) applyProfile(profile);
+  if(checked) {
+   box.classList.remove('check-burst');
+   void box.offsetWidth;
+   box.classList.add('check-burst');
+  }
+ } catch {sync();notify('Trình duyệt chưa lưu được tiến độ.')}
+});
 view.addEventListener('click',async e=>{const n=nodes[e.target.dataset.copy];if(n){const prompt='Bắt đầu bài học '+n.id+' – '+n.title_vi+'.';try{await navigator.clipboard.writeText(prompt);notify('Đã sao chép lệnh học')}catch{window.prompt('Sao chép lệnh học',prompt)}}});
 async function init(){
  const embedded = document.getElementById('roadmap-data');
@@ -127,7 +168,15 @@ async function init(){
   db = await response.json();
  }
  nodes=Object.fromEntries(db.knowledge_nodes.map(n=>[n.id,n]));ordered=db.learning_order.map(id=>nodes[id]);for(const n of db.knowledge_nodes)if(n.parent_id)(children[n.parent_id]??=[]).push(n.id);
- try{done=new Set(JSON.parse(localStorage.getItem(key)||'[]'))}catch{notify('Không đọc được tiến độ đã lưu.')}
+ progressUI.init(applyProfile);
+ try {
+  storageService.init({
+   summarize:items=>ordered.filter(n=>leaves(n.id).every(id=>items.has(id))).map(n=>n.id),
+   onRefresh:name=>{if(name===storageService.current()) refreshProfile()},
+   onProblem:name=>{if(name===storageService.current()) notify('Đã lưu trên máy · Chờ đồng bộ')}
+  });
+  refreshProfile();
+ } catch {progressUI.display(null);notify('Trình duyệt không đọc được bộ nhớ tiến trình.')}
  window.addEventListener('hashchange',render);render()
 }
 init().catch(()=>{view.textContent='Không đọc được roadmap.json. Vui lòng tải lại trang.'})

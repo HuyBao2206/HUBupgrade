@@ -1,0 +1,8 @@
+name = "hub-ham-hoc-progress"
+main = "index.mjs"
+compatibility_date = "2025-09-01"
+
+[vars]
+GITHUB_REPO = "HuyBao2206/HUBupgrade"
+GITHUB_BRANCH = "main"
+ALLOWED_ORIGIN = "https://huybao2206.github.io"

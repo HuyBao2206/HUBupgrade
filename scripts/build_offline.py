@@ -16,7 +16,8 @@ def data_url(path):
 def build():
     html = (ROOT / "index.html").read_text()
     style = (ROOT / "style.css").read_text()
-    app = (ROOT / "app.js").read_text()
+    scripts = ["storageService.js", "progressUI.js", "app.js"]
+    app = "\n".join((ROOT / name).read_text() for name in scripts)
     data = json.loads((ROOT / "roadmap.json").read_text())
     for path in (ROOT / "assets").iterdir():
         name = path.relative_to(ROOT).as_posix()
@@ -28,7 +29,8 @@ def build():
 
     payload = json.dumps(data, ensure_ascii=False).replace("<", r"\u003c")
     html = html.replace('<link rel="stylesheet" href="style.css">', f"<style>{style}</style>")
-    html = html.replace('<script src="app.js" defer></script>', "")
+    for name in scripts:
+        html = html.replace(f'  <script src="{name}" defer></script>\n', "")
     scripts = f'<script type="application/json" id="roadmap-data">{payload}</script><script>{app}</script>'
     # Keep the existing offline path so bookmarks and browser progress keep working.
     (ROOT / "HUB-Atlas.html").write_text(html.replace("</body>", scripts + "</body>"))
