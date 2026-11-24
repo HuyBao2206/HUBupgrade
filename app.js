@@ -64,8 +64,11 @@ function term(t){return '<div class="term"><b>'+esc(t.term_en)+'</b>'+esc(t.term
 function refs(ids){return ids.map(id=>'<a href="'+route(id)+'">'+esc(id)+' · '+esc(nodes[id]?.title_vi)+'</a>').join('<br>')||'Không có'}
 function check(id){return '<input type="checkbox" data-check="'+id+'" aria-label="Hoàn thành '+esc(nodes[id].title_vi)+'">'}
 function tree(id){const n=nodes[id];return '<div class="child">'+check(id)+' <b>'+esc(n.title_vi)+'</b>'+fold(id+' · '+depth[n.required_depth],'<p>'+esc(n.description)+'</p>'+(children[id]||[]).map(tree).join(''))+'</div>'}
+function lessonTerms(n) {
+ return db.glossary.filter(t => n.term_ids.includes(t.id) || t.related_knowledge_ids.includes(n.id));
+}
 function lessonBody(n){
- const terms=db.glossary.filter(t=>n.term_ids.includes(t.id)||t.related_knowledge_ids.includes(n.id));
+ const terms=lessonTerms(n);
  return '<div class="lesson-progress"><label>'+check(n.id)+' Hoàn thành bài học</label><span data-count="'+n.id+'"></span><div class="bar"><i data-fill="'+n.id+'"></i></div></div><p class="muted">'+esc(n.title_en)+'</p><p>'+esc(n.description)+'</p><p><b>Nhóm năng lực</b> · '+esc(nodes[n.parent_id].title_vi)+'</p><p><b>Ứng dụng</b> · '+n.applicable_domains.map(d=>names[d]).join(', ')+'</p><p><b>Học trước</b><br>'+refs(n.prerequisites)+'</p>'+ (n.recommended_prerequisites.length?fold('Nên học trước',refs(n.recommended_prerequisites)):'')+'<h3>Chuẩn đầu ra</h3>'+list(n.learning_outcomes)+'<h3>Checklist nội dung</h3>'+(children[n.id]||[]).map(tree).join('')+fold('Thực hành · '+n.practice_mode.join(', '),list(n.practical_applications)+'<p>'+esc(n.tools.join(' · '))+'</p>')+fold('Thuật ngữ liên quan ('+terms.length+')',terms.map(term).join(''))+fold([...new Set(n.ai_notes.map(x=>ai[x.label]).concat(n.human_decisions.length?['Con người làm chủ']:[]))].join(' · '),n.ai_notes.map(a=>'<h3>'+esc(ai[a.label])+'</h3><b>'+esc(a.task)+'</b>'+list([a.technology,a.current_capability,a.near_term_outlook,'Trách nhiệm: '+a.human_responsibility,'Rủi ro: '+a.risks])).join('')+list(n.human_decisions))+'<button class="plain" data-copy>⧉ Sao chép lệnh học</button>'
 }
 function row(n){return '<details class="lesson" data-id="'+n.id+'" style="'+palette(n.domain_id)+'"><summary><span class="seq">'+num(n.sequence_number)+'</span><span><span class="code">'+n.id+' · '+names[n.domain_id]+'</span><strong>'+esc(n.title_vi)+'</strong><small>'+depth[n.required_depth]+' · <span data-state="'+n.id+'" data-value="'+state(n.id)+'">'+statusName[state(n.id)]+'</span></small></span></summary><div class="content"></div></details>'}
@@ -187,17 +190,58 @@ view.addEventListener('change',async event=>{
   }
  } catch {sync();notify('Trình duyệt chưa lưu được tiến độ.')}
 });
+function lessonPrompt(lesson) {
+ const sections = children[lesson.id] || [];
+ const lines = [
+  `Hãy dạy tôi bài ${lesson.id} – ${lesson.title_vi} trong lộ trình Quản trị vận hành đa ngành của HUB Ham Học.`,
+  `Phạm vi: ${lesson.description}`,
+  `Độ sâu cần đạt: ${depth[lesson.required_depth]}. Lĩnh vực áp dụng: ${lesson.applicable_domains.map(id => names[id]).join(', ')}.`,
+ ];
+ if (lesson.prerequisites.length) {
+  lines.push('Kiến thức học trước: '+lesson.prerequisites.map(id => id+' – '+nodes[id].title_vi).join('; ')+'.');
+ }
+ lines.push('', 'Sau bài này, tôi cần làm được:', ...lesson.learning_outcomes.map(text => '- '+text));
+ lines.push('', `Đề cương gồm ${sections.length} phần chính, theo đúng thứ tự sau:`);
+ function appendTopic(id, label) {
+  const topic = nodes[id];
+  lines.push(`${label} · ${id} – ${topic.title_vi}`, topic.description);
+  (children[id] || []).forEach((child, i) => appendTopic(child, label+'.'+(i+1)));
+ }
+ sections.forEach((id, i) => appendTopic(id, 'Phần '+(i+1)));
+ lines.push('', 'Tình huống để thực hành:', ...lesson.practical_applications.map(text => '- '+text));
+ if (lesson.tools.length) lines.push('Công cụ liên quan: '+lesson.tools.join(', ')+'.');
+ const terms = lessonTerms(lesson);
+ if (terms.length) {
+  lines.push('', 'Thuật ngữ dùng trong bài:', ...terms.map(t => `- ${t.term_en} – ${t.term_vi}: ${t.meaning_vi}`));
+ }
+ if (lesson.human_decisions.length) {
+  lines.push('', 'Quyết định thuộc trách nhiệm của con người:', ...lesson.human_decisions.map(text => '- '+text));
+ }
+ lines.push('', 'Cách dạy tôi:',
+  `1. Trong phản hồi đầu, cho tôi biết bài có ${sections.length} phần và liệt kê ngắn tên từng phần. Sau đó dạy ngay phần 1, hoặc phần tôi chỉ định nếu tôi ghi thêm “Dạy tiếp phần …” ở cuối yêu cầu này.`,
+  '2. Mỗi phản hồi chỉ dạy một phần chính. Mở đầu bằng “Phần X/'+sections.length+' – tên phần”. Dùng tiếng Việt dễ hiểu, giải thích thuật ngữ tiếng Anh khi xuất hiện và trình bày các mục nhỏ thuộc phần đang học.',
+  '3. Nêu điều tôi cần làm được ở phần này, giải thích cách làm qua một ví dụ nghiệp vụ cụ thể, rồi giao một bài tập ngắn kèm tiêu chí để tôi tự kiểm tra. Ghi rõ số liệu giả định trong ví dụ. Với quy định có thể thay đổi, nêu rõ điểm cần đối chiếu với nguồn hiện hành.',
+  `4. Nếu tôi hỏi lại hoặc gửi bài làm, hãy giải đáp trong phần đang học. Cuối mỗi lượt khi còn phần kế tiếp, ghi đúng số và tên phần đó trong lời nhắc: “Khi sẵn sàng, hãy nhắn: Dạy tiếp phần [số] – [tên phần] của bài ${lesson.id}.” Dừng tại đó và chờ tôi yêu cầu tiếp.`,
+  '5. Khi tôi yêu cầu tiếp, nối lại ngắn gọn với kiến thức vừa học rồi dạy đúng phần được yêu cầu. Sau phần cuối, tóm tắt các chuẩn đầu ra và cho tôi một tình huống để tự vận dụng toàn bài.'
+ );
+ return lines.join('\n');
+}
 view.addEventListener('click', async event => {
  const button = event.target.closest('button[data-copy]');
  if (!button || button.disabled) return;
  const target = nodes[button.dataset.copy];
  if (!target) return;
- const prompt = 'Bắt đầu bài học '+target.id+' – '+target.title_vi+'.';
+ const prompt = lessonPrompt(target);
  try {
   await navigator.clipboard.writeText(prompt);
   notify('Đã sao chép lệnh học · '+target.id);
  } catch {
-  window.prompt('Sao chép lệnh học · '+target.id, prompt);
+  const dialog = document.querySelector('#manual-copy');
+  const field = dialog.querySelector('textarea');
+  field.value = prompt;
+  dialog.showModal();
+  field.focus();
+  field.select();
  }
 });
 async function init(){
