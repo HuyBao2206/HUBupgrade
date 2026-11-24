@@ -14,7 +14,9 @@ function encode(text) {
 }
 export default {
   async fetch(request,env) {
-    const origin = env.ALLOWED_ORIGIN;
+    const origin = env.ALLOWED_ORIGIN ?? 'https://huybao2206.github.io';
+    const repo = env.GITHUB_REPO ?? 'HuyBao2206/HUBupgrade';
+    const branch = env.GITHUB_BRANCH ?? 'main';
     if (!origin || request.headers.get('Origin')!==origin) return new Response(null,{status:403});
     const headers={'Access-Control-Allow-Origin':origin,'Vary':'Origin','Cache-Control':'no-store',
       'Access-Control-Allow-Methods':'GET, PUT, OPTIONS','Access-Control-Allow-Headers':'Content-Type'};
@@ -23,14 +25,14 @@ export default {
     const match=new URL(request.url).pathname.match(/^\/profiles\/([a-z0-9]+)$/);
     if(!match) return reply(404,{error:'unknown_route'});
     if(!['GET','PUT'].includes(request.method)) return reply(405,{error:'method'});
-    if(!env.GITHUB_TOKEN || !env.GITHUB_REPO || !env.GITHUB_BRANCH) return reply(503,{error:'configuration'});
+    if(!env.GITHUB_TOKEN) return reply(503,{error:'configuration'});
     const name=match[1];
     const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(name));
     const filename=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
-    const url='https://api.github.com/repos/'+env.GITHUB_REPO+'/contents/data/progress/'+filename+'.json';
+    const url='https://api.github.com/repos/'+repo+'/contents/data/progress/'+filename+'.json';
     const gh={Authorization:'Bearer '+env.GITHUB_TOKEN,Accept:'application/vnd.github+json','User-Agent':'hub-progress-worker','X-GitHub-Api-Version':'2022-11-28'};
     try {
-      const existing=await fetch(url+'?ref='+encodeURIComponent(env.GITHUB_BRANCH),{headers:gh,cache:'no-store'});
+      const existing=await fetch(url+'?ref='+encodeURIComponent(branch),{headers:gh,cache:'no-store'});
       if(!existing.ok && existing.status!==404) return reply(503,{error:'storage_unavailable'});
       const file=existing.ok?await existing.json():null;
       const previous=file?JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(file.content),c=>c.charCodeAt(0)))):null;
@@ -45,7 +47,7 @@ export default {
       if(data.sha!==(file?.sha??null) || (previous && (profile.id!==previous.id || profile.relation!==previous.relation || profile.createdAt!==previous.createdAt)))
         return reply(409,{error:'conflict'});
       const saved=await fetch(url,{method:'PUT',headers:{...gh,'Content-Type':'application/json'},
-        body:JSON.stringify({message:'Save learning progress [skip ci]',branch:env.GITHUB_BRANCH,
+        body:JSON.stringify({message:'Save learning progress [skip ci]',branch,
           content:encode(JSON.stringify(profile)),...(file && {sha:file.sha})})});
       if(saved.status===409 || saved.status===422) return reply(409,{error:'conflict'});
       if(!saved.ok) return reply(503,{error:'storage_unavailable'});

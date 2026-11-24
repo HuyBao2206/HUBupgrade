@@ -1,8 +1,8 @@
-# Đồng bộ tiến trình trên GitHub Pages
+# Bật đồng bộ tiến trình bằng trình duyệt
 
-1. Tạo fine-grained GitHub token cho riêng kho `HuyBao2206/HUBupgrade`, với quyền **Contents → Read and write**. Tài khoản cấp token phải có quyền ghi nhánh đã cấu hình.
-2. Trong thư mục `worker/`, chạy `npx wrangler deploy`, rồi `npx wrangler secret put GITHUB_TOKEN` và nhập token ở lời nhắc. Tên repo, nhánh và origin của Pages đã có trong `wrangler.toml`.
-3. Điền URL HTTPS của Worker vào thuộc tính `content` của thẻ meta `progress-endpoint` trong `index.html`, chạy `python scripts/build_offline.py` rồi đẩy hai tệp HTML lên `main`. Mở website trên GitHub Pages để dùng đồng bộ.
+1. **Lấy khóa GitHub.** Mở [trang tạo fine-grained token](https://github.com/settings/personal-access-tokens/new), đặt tên `HUB progress`. Tại **Repository access**, chọn **Only select repositories → HUBupgrade**. Tại **Repository permissions**, thêm **Contents → Read and write**. Nhấn **Generate token** và sao chép khóa để dùng ở bước 2.
+2. **Tạo Worker trong Cloudflare.** Mở [Cloudflare Dashboard](https://dash.cloudflare.com/), chọn **Workers & Pages → Create application → Start with Hello World**, đặt tên `hub-ham-hoc-progress` rồi **Deploy**. Trong Worker vừa tạo, mở **Edit code**, thay mã mẫu bằng toàn bộ [mã Worker của HUB](https://github.com/HuyBao2206/HUBupgrade/blob/main/worker/index.mjs) và nhấn **Deploy**. Vào **Settings → Variables and Secrets → Add**, chọn loại **Secret**, đặt tên `GITHUB_TOKEN`, dán khóa và lưu bằng **Deploy**. Nếu đã có Worker này, mở Worker hiện có.
+3. **Nối website với Worker.** Sao chép URL công khai dạng `https://hub-ham-hoc-progress.…workers.dev` trong **Settings → Domains & Routes**. Có thể gửi riêng URL này cho Codex để nối web và kiểm tra. Nếu tự thực hiện, điền URL vào `content` của meta `progress-endpoint` trong `index.html`, chạy `python scripts/build_offline.py` rồi đẩy hai tệp HTML lên `main`. Mở lại website trên trình duyệt đang giữ tiến độ cũ để đồng bộ lần đầu.
 
 Worker chỉ đọc và ghi các tệp `data/progress/<hash-danh-xung>.json`. Các lần ghi dùng SHA của tệp để phát hiện xung đột. Tên truy cập là cách duy nhất để mở tiến trình. Ai biết tên đều có thể xem và sửa tiến độ qua website. Người có quyền đọc kho có thể đọc cả danh xưng, quan hệ và tiến độ đã ghi trong Git.
 
