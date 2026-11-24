@@ -16,6 +16,8 @@ def data_url(path):
 def build():
     html = (ROOT / "index.html").read_text()
     style = (ROOT / "style.css").read_text()
+    for font in (ROOT / "fonts").glob("*.woff"):
+        style = style.replace(font.relative_to(ROOT).as_posix(), data_url(font))
     scripts = ["storageService.js", "progressUI.js", "app.js"]
     app = "\n".join((ROOT / name).read_text() for name in scripts)
     data = json.loads((ROOT / "roadmap.json").read_text())

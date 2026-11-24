@@ -1,3 +1,10 @@
+@font-face {
+  font-family:"Noto Serif VI";
+  src:url("fonts/noto-serif-vi.woff") format("woff");
+  font-style:normal;
+  font-weight:400;
+  font-display:swap;
+}
 :root {
   color-scheme: light;
   --ink:#1b2438; --muted:#565f71; --line:#d9dce1; --paper:#f7f7f3;
@@ -156,7 +163,13 @@ body:has(#progress-dialog[open]) {overflow:hidden}
 #progress-dialog [data-close] {font-size:23px;width:36px;height:36px;padding:0;background:transparent;border-color:transparent}
 .dialog-columns {display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr)}
 .dialog-columns form {min-width:0;padding:22px 24px}
-.dialog-columns h3 {font:500 24px/1.25 var(--serif);margin-bottom:15px}
+#progress-title,.dialog-columns h3 {
+  font-family:"Noto Serif VI",serif;
+  font-weight:400;
+  line-height:1.35;
+  letter-spacing:normal;
+}
+.dialog-columns h3 {font-size:24px;margin-bottom:15px}
 .dialog-columns form>label,.dialog-columns legend {display:block;font-size:14px;font-weight:650}
 .dialog-columns input[name=username] {display:block;width:100%;background:white;color:var(--ink);border:1px solid #afb6c0;border-radius:7px;padding:9px 12px;font:inherit;margin:5px 0}
 .dialog-columns input[name=username]:focus {outline:2px solid #a78144;outline-offset:1px;box-shadow:0 0 0 5px #e9d5aa66}
