@@ -97,9 +97,23 @@ function sync() {
   el.parentElement.querySelector('[data-fill]').style.transform = 'scaleX('+completed/ids.length+')';
  });
 }
+function renderBreadcrumbs() {
+ const trail = [['Không gian học tập','#home'],[pages[page],'#'+page]];
+ if (page === 'road') {
+  if (domain !== 'all') trail.push([names[domain],'#road/'+domain]);
+  if (nodes[lesson]?.level === 2 && courseDomain(nodes[lesson],domain)) trail.push([lesson]);
+ }
+ document.querySelector('#crumb').innerHTML = trail.map(([label,url],index) => {
+  const separator = index ? '<span class="separator" aria-hidden="true">/</span>' : '';
+  const item = index === trail.length-1
+   ? '<span aria-current="page">'+esc(label)+'</span>'
+   : '<a href="'+url+'">'+esc(label)+'</a>';
+  return '<li>'+separator+item+'</li>';
+ }).join('');
+}
 function render(){
  const args=location.hash.slice(1).split('/');page=Object.hasOwn(pages,args[0])?args[0]:'home';domain=Object.hasOwn(names,args[1])?args[1]:'all';lesson=args[2];q='';filter='';
- document.querySelector('#crumb').textContent=pages[page];document.querySelector('nav').innerHTML=Object.entries(pages).map(([k,v])=>'<a href="#'+k+'" class="'+(page===k?'on':'')+'" '+(page===k?'aria-current="page"':'')+'><span class="icon">'+icon(k)+'</span>'+v+'</a>').join('');
+ renderBreadcrumbs();document.querySelector('aside nav').innerHTML=Object.entries(pages).map(([k,v])=>'<a href="#'+k+'" class="'+(page===k?'on':'')+'" '+(page===k?'aria-current="page"':'')+'><span class="icon">'+icon(k)+'</span>'+v+'</a>').join('');
  if(page==='road'||page==='terms'){
  view.innerHTML='<h1>'+(page==='road'?'Lộ trình học tập':'Thuật ngữ chuyên ngành')+'</h1><div class="filters"><input type="search" aria-label="Tìm kiếm" placeholder="'+(page==='road'?'Tìm theo tên hoặc mã kiến thức':'Tìm thuật ngữ Anh – Việt')+'">'+(page==='road'?'<select aria-label="Lĩnh vực" id="domain"><option value="all">Tất cả lĩnh vực</option>'+Object.entries(names).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select><select aria-label="Trạng thái" id="filter"><option value="">Mọi trạng thái</option>'+Object.entries(statusName).map(([k,v])=>'<option value="'+k+'">'+v+'</option>').join('')+'</select>':'')+'</div><small class="muted" id="amount"></small><div id="results"></div>';
  view.querySelector('input').oninput=e=>{q=e.target.value;results()};if(page==='road'){view.querySelector('#domain').value=domain;view.querySelector('#domain').onchange=e=>{location.hash='road/'+e.target.value};view.querySelector('#filter').onchange=e=>{filter=e.target.value;results()}}results();
